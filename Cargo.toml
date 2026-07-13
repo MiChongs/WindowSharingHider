@@ -1,0 +1,33 @@
+[package]
+name = "window-sharing-hider"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Exclude selected Windows desktop windows from supported capture APIs"
+license = "MIT"
+repository = "https://github.com/MiChongs/WindowSharingHider"
+
+[dependencies]
+parking_lot = "0.12"
+slint = "1.16"
+windows-icons = "0.3"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+slint-build = "1.16"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

@@ -1,0 +1,503 @@
+import { Button, CheckBox, ListView, Palette, Switch } from "std-widgets.slint";
+
+export struct WindowRow {
+    row-id: int,
+    title: string,
+    detail: string,
+    icon: image,
+    icon-key: string,
+    has-icon: bool,
+    status: string,
+    status-tone: int,
+    enabled: bool,
+    busy: bool,
+    system-candidate: bool,
+}
+
+global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <brush> canvas: dark ? #111318 : #f4f5f7;
+    out property <brush> surface: dark ? #181b21 : #ffffff;
+    out property <brush> surface-subtle: dark ? #1e222a : #f8f9fb;
+    out property <brush> surface-hover: dark ? #242933 : #f1f4f8;
+    out property <brush> border: dark ? #303640 : #dfe3e8;
+    out property <brush> border-strong: dark ? #414854 : #cbd1d9;
+    out property <brush> text: dark ? #f2f4f7 : #1b1d22;
+    out property <brush> text-secondary: dark ? #a8b0bd : #626a76;
+    out property <brush> text-tertiary: dark ? #7f8896 : #858d99;
+    out property <brush> accent: dark ? #6aa8ff : #2463d4;
+    out property <brush> accent-subtle: dark ? #172b47 : #eaf2ff;
+    out property <brush> success: dark ? #57c58b : #168653;
+    out property <brush> success-subtle: dark ? #173427 : #e8f7ef;
+    out property <brush> warning: dark ? #e5b567 : #9a6700;
+    out property <brush> danger: dark ? #ff8585 : #c93434;
+    out property <brush> danger-subtle: dark ? #3a2022 : #fff0f0;
+}
+
+component AppGlyph inherits Rectangle {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: Theme.accent-subtle;
+    border-width: 1px;
+    border-color: Theme.dark ? #294a72 : #c9dcf8;
+
+    Rectangle {
+        x: 9px;
+        y: 9px;
+        width: 20px;
+        height: 15px;
+        border-radius: 3px;
+        border-width: 1.5px;
+        border-color: Theme.accent;
+        background: transparent;
+    }
+
+    Rectangle {
+        x: 14px;
+        y: 27px;
+        width: 10px;
+        height: 1.5px;
+        background: Theme.accent;
+    }
+}
+
+component StatusDot inherits Rectangle {
+    in property <int> tone;
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background: tone == 3 ? Theme.danger : tone == 2 ? Theme.success : tone == 1 ? Theme.accent : Theme.text-tertiary;
+}
+
+component WindowGlyph inherits Rectangle {
+    in property <bool> active;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    background: active ? Theme.success-subtle : Theme.surface-subtle;
+
+    Rectangle {
+        x: 7px;
+        y: 8px;
+        width: 18px;
+        height: 14px;
+        border-radius: 3px;
+        border-width: 1.5px;
+        border-color: active ? Theme.success : Theme.text-tertiary;
+        background: transparent;
+    }
+
+    Rectangle {
+        x: 12px;
+        y: 25px;
+        width: 8px;
+        height: 1px;
+        background: active ? Theme.success : Theme.text-tertiary;
+    }
+}
+
+component WindowRowItem inherits Rectangle {
+    in property <WindowRow> data;
+    callback toggled(int, bool);
+
+    height: 68px;
+    background: data.busy ? Theme.accent-subtle : transparent;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 12px;
+
+        if data.has-icon: Rectangle {
+            width: 32px;
+            height: 32px;
+            background: transparent;
+
+            Image {
+                x: 2px;
+                y: 2px;
+                width: 28px;
+                height: 28px;
+                source: data.icon;
+                image-fit: contain;
+            }
+        }
+
+        if !data.has-icon: WindowGlyph { active: data.enabled; }
+
+        VerticalLayout {
+            spacing: 3px;
+            horizontal-stretch: 1;
+
+            Text {
+                text: data.title;
+                color: Theme.text;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: data.detail;
+                color: Theme.text-tertiary;
+                font-family: "Cascadia Mono";
+                font-size: 9px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+        }
+
+        HorizontalLayout {
+            width: 108px;
+            spacing: 7px;
+            StatusDot { tone: data.status-tone; }
+            Text {
+                text: data.status;
+                color: data.status-tone == 3 ? Theme.danger : data.status-tone == 2 ? Theme.success : data.status-tone == 1 ? Theme.accent : Theme.text-secondary;
+                font-size: 10px;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+        }
+
+        Switch {
+            checked: data.enabled;
+            enabled: !data.busy;
+            accessible-label: data.enabled ? "停用窗口捕获排除" : "启用窗口捕获排除";
+            toggled => { root.toggled(data.row-id, self.checked); }
+        }
+    }
+
+    Rectangle {
+        x: 14px;
+        y: parent.height - 1px;
+        width: parent.width - 28px;
+        height: 1px;
+        background: Theme.border;
+    }
+}
+
+
+export component AppWindow inherits Window {
+    title: "Window Sharing Hider";
+    preferred-width: 1040px;
+    preferred-height: 720px;
+    min-width: 860px;
+    min-height: 600px;
+    background: Theme.canvas;
+    default-font-family: "Segoe UI Variable";
+    default-font-size: 13px;
+
+    in property <[WindowRow]> window-rows;
+    in property <string> status-message: "正在准备窗口扫描…";
+    in property <int> status-tone: 0;
+    in property <bool> scanning: false;
+    in-out property <bool> system-mode: false;
+    in-out property <bool> wetype-enabled: false;
+    in property <bool> wetype-found: false;
+    in property <int> protected-count: 0;
+
+    callback refresh-requested();
+    callback window-toggled(int, bool);
+    callback system-mode-toggled(bool);
+    callback wetype-toggled(bool);
+
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 20px;
+        padding-bottom: 18px;
+        spacing: 16px;
+
+        HorizontalLayout {
+            height: 52px;
+            spacing: 12px;
+
+            AppGlyph {}
+
+            VerticalLayout {
+                spacing: 2px;
+                horizontal-stretch: 1;
+
+                Text {
+                    text: "窗口捕获边界";
+                    color: Theme.text;
+                    font-size: 20px;
+                    font-weight: 650;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "管理哪些桌面窗口不进入受支持的会议与录屏画面";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+
+            VerticalLayout {
+                width: 92px;
+                spacing: 1px;
+
+                Text {
+                    text: root.protected-count;
+                    color: root.protected-count > 0 ? Theme.success : Theme.text;
+                    font-size: 20px;
+                    font-weight: 650;
+                    horizontal-alignment: right;
+                }
+
+                Text {
+                    text: "个窗口受保护";
+                    color: Theme.text-tertiary;
+                    font-size: 9px;
+                    horizontal-alignment: right;
+                }
+            }
+
+            Button {
+                width: 104px;
+                text: root.scanning ? "扫描中…" : "刷新列表";
+                enabled: !root.scanning;
+                accessible-label: "刷新窗口列表";
+                clicked => { root.refresh-requested(); }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        HorizontalLayout {
+            spacing: 16px;
+            vertical-stretch: 1;
+
+            Rectangle {
+                width: 286px;
+                border-radius: 9px;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 14px;
+
+                    Text {
+                        text: "捕获策略";
+                        color: Theme.text;
+                        font-size: 14px;
+                        font-weight: 650;
+                    }
+
+                    Rectangle {
+                        height: 128px;
+                        border-radius: 8px;
+                        background: root.wetype-enabled ? Theme.accent-subtle : Theme.surface-subtle;
+                        border-width: 1px;
+                        border-color: root.wetype-enabled ? Theme.accent : Theme.border;
+
+                        VerticalLayout {
+                            padding: 13px;
+                            spacing: 8px;
+
+                            HorizontalLayout {
+                                Text {
+                                    text: "微信输入法候选框";
+                                    color: Theme.text;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                }
+
+                                Switch {
+                                    checked: root.wetype-enabled;
+                                    accessible-label: "保护微信输入法候选框";
+                                    toggled => {
+                                        root.wetype-enabled = self.checked;
+                                        root.wetype-toggled(self.checked);
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: root.wetype-enabled
+                                    ? (root.wetype-found ? "候选框已发现；窗口重建后会自动恢复保护。" : "等待候选框出现：输入中文并保持候选框显示。")
+                                    : "启用后持续查找并保护 wetype_candidate。";
+                                color: root.wetype-enabled && !root.wetype-found ? Theme.accent : Theme.text-secondary;
+                                font-size: 10px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 112px;
+                        border-radius: 8px;
+                        background: Theme.surface-subtle;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        VerticalLayout {
+                            padding: 13px;
+                            spacing: 7px;
+
+                            CheckBox {
+                                text: "显示系统与输入法窗口";
+                                checked: root.system-mode;
+                                accessible-label: "显示系统与输入法窗口";
+                                toggled => {
+                                    root.system-mode = self.checked;
+                                    root.system-mode-toggled(self.checked);
+                                }
+                            }
+
+                            Text {
+                                text: "高级模式会列出系统宿主；权限不足只影响对应窗口。";
+                                color: Theme.text-secondary;
+                                font-size: 10px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+
+                    Rectangle {
+                        height: 102px;
+                        border-radius: 8px;
+                        background: Theme.surface-subtle;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 6px;
+
+                            Text {
+                                text: "使用范围";
+                                color: Theme.text;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: "仅影响支持 Windows display affinity 的捕获 API；不是 DRM，也不能阻止不兼容的截屏方式。";
+                                color: Theme.text-secondary;
+                                font-size: 9px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                border-radius: 9px;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding-left: 0px;
+                    padding-right: 0px;
+                    padding-top: 14px;
+                    padding-bottom: 0px;
+                    spacing: 8px;
+
+                    HorizontalLayout {
+                        height: 30px;
+                        padding-left: 16px;
+                        padding-right: 16px;
+
+                        Text {
+                            text: "桌面窗口";
+                            color: Theme.text;
+                            font-size: 14px;
+                            font-weight: 650;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.window-rows.length + " 个可选择窗口";
+                            color: Theme.text-tertiary;
+                            font-size: 10px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    if root.window-rows.length == 0: Rectangle {
+                        vertical-stretch: 1;
+                        background: transparent;
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 8px;
+
+                            WindowGlyph { active: false; width: 44px; height: 44px; }
+
+                            Text {
+                                text: root.scanning ? "正在查找桌面窗口" : "没有可选择的窗口";
+                                color: Theme.text;
+                                font-size: 13px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "打开一个带标题的窗口，或启用高级模式后刷新。";
+                                color: Theme.text-secondary;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    if root.window-rows.length > 0: ListView {
+                        for row in root.window-rows: WindowRowItem {
+                            data: row;
+                            toggled(row-id, enabled) => { root.window-toggled(row-id, enabled); }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 38px;
+            border-radius: 8px;
+            background: root.status-tone == 3 ? Theme.danger-subtle : root.status-tone == 2 ? Theme.success-subtle : Theme.surface;
+            border-width: 1px;
+            border-color: root.status-tone == 3 ? Theme.danger : root.status-tone == 2 ? Theme.success : Theme.border;
+
+            HorizontalLayout {
+                padding-left: 13px;
+                padding-right: 13px;
+                spacing: 8px;
+
+                StatusDot { tone: root.status-tone; }
+
+                Text {
+                    text: root.status-message;
+                    color: root.status-tone == 3 ? Theme.danger : root.status-tone == 2 ? Theme.success : root.status-tone == 1 ? Theme.accent : Theme.text-secondary;
+                    font-size: 10px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
